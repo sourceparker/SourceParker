@@ -1,68 +1,55 @@
 package com.siat.diayan.sourceparker;
 
-import android.Manifest;
-import android.content.Context;
-import android.content.pm.PackageManager;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
-import android.os.Build;
+import android.graphics.Camera;
+import android.graphics.Color;
+import android.nfc.Tag;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
-import android.support.v4.app.ActivityCompat;
+import android.os.Handler;
+import android.os.SystemClock;
 import android.support.v4.app.FragmentActivity;
-import android.support.v4.content.ContextCompat;
+import android.support.v7.app.AlertDialog;
 import android.util.Log;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.Interpolator;
 
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
 import com.firebase.geofire.GeoQuery;
 import com.firebase.geofire.GeoQueryEventListener;
-import com.firebase.geofire.LocationCallback;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.Circle;
+import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.firebase.database.ChildEventListener;
-import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.FirebaseOptions;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
-    private GoogleMap mMap;
-    private GoogleMap mapParkingLots;
-    private LocationManager mLocationManager;
-    private LocationListener mLocationListener;
+    private static final GeoLocation INITIAL_CENTER = new GeoLocation(5.5968233, -0.2254799);
+    private static final int INITIAL_ZOOM_LEVEL = 14;
+    private static final String GEO_FIRE_DB = " https://proj-4c97c.firebaseio.com";
+    private static final String GEO_FIRE_REF = GEO_FIRE_DB + "/Coordinates";
 
-    private FirebaseDatabase mFirebaseDatabase;
-    private DatabaseReference mDatabaseReference;
-    private ChildEventListener mChildEventListener;
-    GeoFire geoFire;
-    Location lastKnownLocation;
+    private GoogleMap map;
+    private Circle searchCircle;
+    private GeoFire geoFire;
+    private GeoQuery geoQuery;
+    private DatabaseReference mDatabase;
+
+    private Map<String, Marker> markers;
     private static final String TAG = "MapsActivity";
-    LatLng userLocation;
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode == 1) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, mLocationListener);
-
-                    Location lastKnownLocation = mLocationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                    updateMap(lastKnownLocation);
-                }
-            }
-        }
-    }
 
 
     @Override
@@ -75,119 +62,123 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mapFragment.getMapAsync(this);
 
 
-    }
 
+//        FirebaseOptions options = new FirebaseOptions.Builder().setApplicationId("proj-4c97c").setDatabaseUrl(GEO_FIRE_DB).build();
+////        FirebaseApp app = FirebaseApp.initializeApp(this, options);
 
+        // setup GeoFire
+        mDatabase = FirebaseDatabase.getInstance().getReference("Coordinates");
+        geoFire = new GeoFire(mDatabase);
+        // radius in km
+        geoQuery = geoFire.queryAtLocation(INITIAL_CENTER, 2000);
+        // setup markers
+        markers = new HashMap<>();
 
-   private void updateMap(Location location) {
-     userLocation = new LatLng(location.getLatitude(), location.getLongitude());
-       mMap.clear();
-
-      mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 16));
-       mMap.addMarker(new MarkerOptions().position(userLocation).title("your location"));
-    }
-
-    private void createMarker(GeoLocation location) {
-        LatLng lots =new LatLng(location.latitude, location.longitude);
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 16));
-        mMap.addMarker(new MarkerOptions()
-                .position(lots)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE))
-                .title("lot"));
 
     }
 
+    @Override
+    protected void onStart() {
+        super.onStart();
 
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+
+    }
+
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        mMap = googleMap;
-       // updateMap(lastKnownLocation);
-        mDatabaseReference = FirebaseDatabase.getInstance().getReference("Coordinates");
-        geoFire = new GeoFire(mDatabaseReference);
-        mLocationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
+        map = googleMap;
 
-        mLocationListener = new LocationListener() {
-            @Override
-            public void onLocationChanged(Location location) {
+        Log.e(TAG,"MAP READY");
+        LatLng latLngCenter = new LatLng(INITIAL_CENTER.latitude, INITIAL_CENTER.longitude);
+        searchCircle = this.map.addCircle(new CircleOptions().center(latLngCenter).radius(1000));
+        searchCircle.setFillColor(Color.argb(66, 255, 0, 255));
+        searchCircle.setStrokeColor(Color.argb(66, 0, 0, 0));
+        map.addMarker(new MarkerOptions().position(latLngCenter).title("my location"));
+        map.moveCamera(CameraUpdateFactory.newLatLngZoom(latLngCenter, INITIAL_ZOOM_LEVEL));
 
-                updateMap(location);
-
-                GeoQuery geoQuery = geoFire.queryAtLocation(new GeoLocation(location.getLatitude(), location.getLongitude()), 0.6);
-                geoQuery.addGeoQueryEventListener(new GeoQueryEventListener() {
-                    @Override
-                    public void onKeyEntered(String key, GeoLocation location) {
-                        Log.i("Lot",String.format("Key %s entered the search area at [%f,%f]", key, location.latitude, location.longitude));
-                        createMarker(location);
-                    }
-
-                    @Override
-                    public void onKeyExited(String key) {
-
-                    }
-
-                    @Override
-                    public void onKeyMoved(String key, GeoLocation location) {
-
-                    }
-
-                    @Override
-                    public void onGeoQueryReady() {
-
-                    }
-
-                    @Override
-                    public void onGeoQueryError(DatabaseError error) {
-
-                    }
-                });
-        }
+        //geoQuery = geoFire.queryAtLocation(new GeoLocation(latLngCenter.latitude, latLngCenter.longitude), 5000);
+        geoQuery.addGeoQueryEventListener(new GeoQueryEventListener() {
 
             @Override
-            public void onStatusChanged(String s, int i, Bundle bundle) {
+            public void onKeyEntered(String key, GeoLocation location) {
+                // Add a new marker to the map
+                Marker marker = map.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude))
+                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+                markers.put(key, marker);
+                map.getCameraPosition();
+                Log.e(TAG, "onKeyEntered: cameraposition" + map.getCameraPosition());
 
-            }
+                Log.e(TAG, "onKeyEntered: number of markers" + markers.size());
+                Log.e(TAG, "onKeyEntered: keys" + key);            }
 
             @Override
-            public void onProviderEnabled(String s) {
-
-            }
-
-            @Override
-            public void onProviderDisabled(String s) {
-
-            }
-
-
-};
-
-
-        if (Build.VERSION.SDK_INT < 23) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-
-                mLocationManager.requestLocationUpdates(mLocationManager.GPS_PROVIDER, 0, 0, mLocationListener);
-            }
-        } else {
-            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
-            } else {
-                mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, mLocationListener);
-               lastKnownLocation = mLocationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-
-                if (lastKnownLocation != null) {
-                    updateMap(lastKnownLocation);
+            public void onKeyExited(String key) {
+                Log.e(TAG,"IN");
+                // Remove any old marker
+                Marker marker = markers.get(key);
+                if (marker != null) {
+                    marker.remove();
+                    markers.remove(key);
                 }
             }
-        }
+
+            @Override
+            public void onKeyMoved(String key, GeoLocation location) {
+                // Move the marker
+                Log.e(TAG,"OUT");
+                Marker marker = markers.get(key);
+                if (marker != null) {
+                    animateMarkerTo(marker, location.latitude, location.longitude);
+                }
+            }
+
+            @Override
+            public void onGeoQueryReady() {
+                Log.e(TAG, "onGeoQueryReady: ");
+            }
+
+            @Override
+            public void onGeoQueryError(DatabaseError error) {
+                new AlertDialog.Builder(MapsActivity.this)
+                        .setTitle("Error")
+                        .setMessage("There was an unexpected error querying GeoFire: " + error.getMessage())
+                        .setPositiveButton(android.R.string.ok, null)
+                        .setIcon(android.R.drawable.ic_dialog_alert)
+                        .show();
+            }
+        });
+    }
+
+    // Animation handler for old APIs without animation support
+    private void animateMarkerTo(final Marker marker, final double lat, final double lng) {
+        final Handler handler = new Handler();
+        final long start = SystemClock.uptimeMillis();
+        final long DURATION_MS = 3000;
+        final Interpolator interpolator = new AccelerateDecelerateInterpolator();
+        final LatLng startPosition = marker.getPosition();
+        handler.post(new Runnable() {
+            @Override
+            public void run() {
+                float elapsed = SystemClock.uptimeMillis() - start;
+                float t = elapsed / DURATION_MS;
+                float v = interpolator.getInterpolation(t);
+
+                double currentLat = (lat - startPosition.latitude) * v + startPosition.latitude;
+                double currentLng = (lng - startPosition.longitude) * v + startPosition.longitude;
+                marker.setPosition(new LatLng(currentLat, currentLng));
+
+                // if animation is not finished yet, repeat
+                if (t < 1) {
+                    handler.postDelayed(this, 16);
+                }
+            }
+        });
+
+
     }
 }
-
-

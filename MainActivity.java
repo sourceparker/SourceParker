@@ -62,7 +62,7 @@ public class MainActivity extends AppCompatActivity {
                 startSignIn();
                 //                    next activity must start from here
                 Intent intent = new Intent(MainActivity.this, MapsActivity.class);
-                startActivity(intent);
+                   startActivity(intent);
             }
         });
 
@@ -72,7 +72,7 @@ public class MainActivity extends AppCompatActivity {
                 if (firebaseAuth.getCurrentUser() != null) {
                     Toast.makeText(MainActivity.this, "authentication success", Toast.LENGTH_SHORT).show();
 
-//                    next activity must start from here
+//     //               next activity must start from here
                     Intent intent = new Intent(MainActivity.this, MapsActivity.class);
                     startActivity(intent);
                 }
@@ -108,7 +108,8 @@ public class MainActivity extends AppCompatActivity {
                             mEditPassword.setText("");
                             //for trial
 
-
+                            Intent intent = new Intent(MainActivity.this, MapsActivity.class);
+                            startActivity(intent);
                         } else {
                             // If sign in fails, display a message to the user.
                             Log.w(TAG, "signInWithEmail:failure", task.getException());
